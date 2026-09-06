@@ -1,0 +1,2489 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>日本語 例文レコーダー</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+/*
+  Deliberately single-theme. A waveform editor is dark for the same reason
+  every other one is: the trace and the trim region have to read instantly,
+  and a light ground washes out the quiet parts of a voice. Every colour here
+  is painted explicitly so the page holds whatever ground it lands on.
+*/
+:root {
+  --ground: #14161a;
+  --panel: #1c1f25;
+  --panel-2: #23272e;
+  --line: #2f343c;
+  --line-2: #3d434d;
+  --ink: #eef1f5;
+  --muted: #9aa3b0;
+  --faint: #6c7683;
+
+  --rec: #e5484d;
+  --rec-dim: #4a1f22;
+  --ok: #43b581;
+  --ok-dim: #143328;
+  --wave: #d9a441;
+  --wave-dim: #4a3c1d;
+
+  --jp: "Zen Kaku Gothic New", "Yu Gothic", "Hiragino Sans", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--ground); }
+body {
+  margin: 0; color: var(--ink); font-family: var(--jp);
+  font-size: 15px; line-height: 1.6;
+}
+:focus-visible { outline: 2px solid var(--wave); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* ---- top bar ---- */
+.bar {
+  position: sticky; top: 0; z-index: 5; background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.bar-in {
+  max-width: 820px; margin: 0 auto; padding: 11px 20px;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+.bar h1 { font-size: 14px; font-weight: 700; margin: 0; }
+.stat {
+  margin-left: auto; display: flex; gap: 16px;
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.stat b { color: var(--ink); font-weight: 500; }
+.track { height: 3px; background: var(--line); }
+.track i { display: block; height: 100%; width: 0; background: var(--ok); }
+
+main { max-width: 820px; margin: 0 auto; padding: 24px 20px 64px; }
+
+/* ---- setup ---- */
+.setup {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 22px 24px;
+}
+.setup h2 { margin: 0 0 12px; font-size: 20px; }
+.setup ol { margin: 0 0 18px; padding-left: 20px; }
+.setup li { margin-bottom: 7px; font-size: 14px; }
+.setup .en {
+  display: block; font-family: var(--mono); font-size: 11.5px;
+  color: var(--faint); line-height: 1.55; margin-top: 10px;
+}
+.warn {
+  margin-top: 14px; padding: 11px 14px; border-radius: 8px;
+  background: var(--rec-dim); border: 1px solid var(--rec);
+  font-size: 13px;
+}
+
+/* ---- the card ---- */
+.card {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; overflow: hidden;
+}
+.card-top {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 22px; border-bottom: 1px solid var(--line);
+  font-family: var(--mono); font-size: 11.5px; color: var(--faint);
+}
+.unlocks {
+  margin-left: auto; border: 1px solid var(--line-2);
+  border-radius: 999px; padding: 2px 10px; color: var(--muted);
+}
+.word {
+  padding: 20px 22px 0; font-size: 15px; color: var(--muted);
+}
+.word b { color: var(--wave); font-weight: 700; font-size: 17px; }
+.line { padding: 10px 22px 18px; }
+.line textarea {
+  width: 100%; font-family: var(--jp); font-size: 27px; font-weight: 500;
+  line-height: 1.5; color: var(--ink); background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 16px 18px; resize: vertical; min-height: 104px;
+}
+.line .hint { font-size: 11.5px; color: var(--faint); margin: 7px 2px 0; }
+
+/* ---- waveform ---- */
+.wave-wrap { padding: 0 22px; }
+.wave {
+  position: relative; background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 10px;
+  height: 132px; overflow: hidden;
+}
+.wave canvas { display: block; width: 100%; height: 100%; }
+.handle {
+  position: absolute; top: 0; bottom: 0; width: 11px; cursor: ew-resize;
+  display: none;
+}
+.handle::after {
+  content: ""; position: absolute; left: 4px; top: 0; bottom: 0;
+  width: 3px; background: var(--ok); border-radius: 2px;
+}
+.wave.has-audio .handle { display: block; }
+.empty {
+  position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center;
+  color: var(--faint); font-size: 13px; pointer-events: none;
+}
+.wave.has-audio .empty { display: none; }
+.dur {
+  font-family: var(--mono); font-size: 11px; color: var(--faint);
+  padding: 6px 2px 0; display: flex; justify-content: space-between;
+}
+
+/* ---- transport ---- */
+.transport {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  padding: 16px 22px 8px; align-items: center;
+}
+button {
+  font-family: var(--jp); font-size: 14px; font-weight: 500;
+  border-radius: 9px; padding: 11px 18px; cursor: pointer;
+  border: 1px solid var(--line-2); background: var(--panel-2);
+  color: var(--ink);
+}
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:disabled { opacity: 0.38; cursor: default; }
+button kbd {
+  font-family: var(--mono); font-size: 10px; opacity: 0.55;
+  margin-left: 7px; font-weight: 400;
+}
+.b-rec { background: var(--rec); border-color: var(--rec); color: #fff; }
+.b-rec.on { background: var(--rec-dim); color: var(--rec); }
+.b-save { background: var(--ok); border-color: var(--ok); color: #08140f; font-weight: 700; }
+.spacer { flex: 1; }
+.tiny { font-size: 13px; padding: 9px 14px; color: var(--muted); }
+
+.meter {
+  height: 5px; background: var(--line); border-radius: 3px;
+  margin: 0 22px 14px; overflow: hidden;
+}
+.meter i { display: block; height: 100%; width: 0; background: var(--rec); }
+
+.keys {
+  font-family: var(--mono); font-size: 11px; color: var(--faint);
+  padding: 0 22px 18px;
+}
+.done-note {
+  padding: 14px 22px; color: var(--ok); font-size: 13.5px;
+  border-top: 1px solid var(--line);
+}
+
+/* ---- footer ---- */
+.foot {
+  margin-top: 22px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px;
+  font-size: 13px; color: var(--muted);
+}
+.foot h3 { margin: 0 0 8px; font-size: 12px; color: var(--faint);
+  text-transform: uppercase; letter-spacing: 0.08em; }
+.foot .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.status { font-family: var(--mono); font-size: 11.5px; color: var(--faint); }
+
+.finished { text-align: center; padding: 54px 24px; }
+.finished h2 { font-size: 24px; margin: 0 0 10px; }
+.finished p { color: var(--muted); margin: 0; }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div class="bar-in">
+    <h1>例文レコーダー</h1>
+    <div class="stat">
+      <span>録音済 <b id="s-done">0</b> / <span id="s-total">0</span></span>
+      <span>解放 <b id="s-names">0</b> 語</span>
+      <span id="s-pos">–</span>
+    </div>
+  </div>
+  <div class="track"><i id="s-track"></i></div>
+</div>
+
+<main>
+  <div id="setup" class="setup">
+    <h2>はじめに</h2>
+    <ol>
+      <li>録音を保存する<strong>フォルダ</strong>を選んでください。音声はあなたのパソコンにだけ保存され、どこにも送信されません。</li>
+      <li>マイクの使用を許可してください。</li>
+      <li>画面の文をそのまま読んで録音します。文が不自然なときは<strong>直接書き直して</strong>から録音してください。</li>
+      <li>途中でやめて大丈夫です。次に同じフォルダを選べば、続きから始まります。</li>
+    </ol>
+    <button class="b-save" id="pick">フォルダを選ぶ / Choose a folder</button>
+    <div class="warn" id="unsupported" hidden>
+      このブラウザはフォルダへの保存に対応していません。<strong>Chrome か Edge</strong> で開いてください。
+      <span class="en">This browser cannot write to a folder. Please use Chrome or Edge.</span>
+    </div>
+    <span class="en">Pick a folder, allow the microphone, read each line aloud, trim if needed, save, next. Everything stays on your machine — nothing is uploaded. Reopen with the same folder to continue where you stopped.</span>
+  </div>
+
+  <div id="app" hidden></div>
+
+  <div class="foot" id="foot" hidden>
+    <h3>保存先</h3>
+    <div id="folder" class="status"></div>
+    <div class="row">
+      <button class="tiny" id="relink">別のフォルダにする</button>
+      <button class="tiny" id="skipto">未録音の先頭へ</button>
+      <span class="status" id="status"></span>
+    </div>
+  </div>
+</main>
+
+<script id="data" type="application/json">{
+"items": [
+{
+"w": "ハーフブロック",
+"s": "ハーフブロックを二つ重ねます。",
+"n": 68,
+"e": "アカシアのハーフブロック"
+},
+{
+"w": "トラップドア",
+"s": "トラップドアを開けて下に降りる。",
+"n": 21,
+"e": "アカシアのトラップドア"
+},
+{
+"w": "スプラッシュポーション",
+"s": "スプラッシュポーションを足元に投げた。",
+"n": 19,
+"e": "スプラッシュポーション"
+},
+{
+"w": "残留ポーション",
+"s": "残留ポーションの霧がしばらく残る。",
+"n": 19,
+"e": "残留ポーション"
+},
+{
+"w": "シュルカーボックス",
+"s": "シュルカーボックスに道具を入れて運ぶ。",
+"n": 17,
+"e": "黒色のシュルカーボックス"
+},
+{
+"w": "テラコッタ",
+"s": "テラコッタで壁の色を変える。",
+"n": 17,
+"e": "黒色のテラコッタ"
+},
+{
+"w": "バンドル",
+"s": "バンドルに小さな物をまとめる。",
+"n": 17,
+"e": "黒色のバンドル"
+},
+{
+"w": "コンクリートパウダー",
+"s": "コンクリートパウダーに水をかける。",
+"n": 16,
+"e": "黒色のコンクリートパウダー"
+},
+{
+"w": "彩釉テラコッタ",
+"s": "彩釉テラコッタの模様がきれいだ。",
+"n": 16,
+"e": "黒色の彩釉テラコッタ"
+},
+{
+"w": "色付きガラス板",
+"s": "窓に色付きガラス板を使う。",
+"n": 16,
+"e": "黒色の色付きガラス板"
+},
+{
+"w": "感圧板",
+"s": "感圧板を踏むとドアが開く。",
+"n": 14,
+"e": "アカシアの感圧板"
+},
+{
+"w": "フェンスゲート",
+"s": "フェンスゲートから牧場に入る。",
+"n": 12,
+"e": "アカシアのフェンスゲート"
+},
+{
+"w": "板材",
+"s": "板材で床を張る。",
+"n": 12,
+"e": "アカシアの板材"
+},
+{
+"w": "砂岩",
+"s": "砂漠で砂岩を掘った。",
+"n": 8,
+"e": "模様入りの赤い砂岩"
+},
+{
+"w": "銅格子",
+"s": "銅格子を窓に取り付ける。",
+"n": 8,
+"e": "銅格子"
+},
+{
+"w": "チェストプレート",
+"s": "チェストプレートを着ると安全だ。",
+"n": 6,
+"e": "チェーンのチェストプレート"
+},
+{
+"w": "馬鎧",
+"s": "馬鎧を馬に着せる。",
+"n": 6,
+"e": "銅の馬鎧"
+},
+{
+"w": "ネザーレンガ",
+"s": "ネザーレンガで砦を建てる。",
+"n": 5,
+"e": "模様入りのネザーレンガ"
+},
+{
+"w": "菌糸",
+"s": "菌糸の上でキノコが育つ。",
+"n": 5,
+"e": "真紅の菌糸"
+},
+{
+"w": "ブラックストーン",
+"s": "ブラックストーンは黒くて硬い。",
+"n": 4,
+"e": "ブラックストーン"
+},
+{
+"w": "石レンガ",
+"s": "石レンガの壁を積む。",
+"n": 4,
+"e": "模様入りの石レンガ"
+},
+{
+"w": "ガスト",
+"s": "ガストが火の玉を飛ばしてくる。",
+"n": 3,
+"e": "乾燥したガスト"
+},
+{
+"w": "クォーツブロック",
+"s": "クォーツブロックは白くて明るい。",
+"n": 3,
+"e": "模様入りのクォーツブロック"
+},
+{
+"w": "フロッグライト",
+"s": "フロッグライトが部屋を照らす。",
+"n": 3,
+"e": "黄土色のフロッグライト"
+},
+{
+"w": "凝灰岩",
+"s": "洞窟で凝灰岩を見つけた。",
+"n": 3,
+"e": "模様入りの凝灰岩"
+},
+{
+"w": "原石ブロック",
+"s": "原石ブロックを地下で掘る。",
+"n": 3,
+"e": "銅の原石ブロック"
+},
+{
+"w": "松明",
+"s": "松明を壁に立てる。",
+"n": 3,
+"e": "銅の松明"
+},
+{
+"w": "樹脂レンガ",
+"s": "樹脂レンガでオレンジ色の壁を作る。",
+"n": 3,
+"e": "模様入りの樹脂レンガ"
+},
+{
+"w": "辰砂",
+"s": "辰砂は赤い鉱石です。",
+"n": 3,
+"e": "模様入りの辰砂"
+},
+{
+"w": "ウツボカズラ",
+"s": "ウツボカズラは虫を捕まえる。",
+"n": 2,
+"e": "ウツボカズラ"
+},
+{
+"w": "キノコブロック",
+"s": "キノコブロックで大きな傘を作る。",
+"n": 2,
+"e": "茶色のキノコブロック"
+},
+{
+"w": "クダウチワサンゴ",
+"s": "クダウチワサンゴが海に生えている。",
+"n": 2,
+"e": "死んだクダウチワサンゴ"
+},
+{
+"w": "クダサンゴ",
+"s": "クダサンゴは細い形をしている。",
+"n": 2,
+"e": "死んだクダサンゴ"
+},
+{
+"w": "クダサンゴブロック",
+"s": "クダサンゴブロックを水の中に置く。",
+"n": 2,
+"e": "死んだクダサンゴブロック"
+},
+{
+"w": "コーラスフルーツ",
+"s": "コーラスフルーツを食べると少し移動する。",
+"n": 2,
+"e": "コーラスフルーツ"
+},
+{
+"w": "シカツノウチワサンゴ",
+"s": "シカツノウチワサンゴを珊瑚礁で見つけた。",
+"n": 2,
+"e": "死んだシカツノウチワサンゴ"
+},
+{
+"w": "シカツノサンゴ",
+"s": "シカツノサンゴは鹿の角に似ている。",
+"n": 2,
+"e": "死んだシカツノサンゴ"
+},
+{
+"w": "シカツノサンゴブロック",
+"s": "シカツノサンゴブロックを集める。",
+"n": 2,
+"e": "死んだシカツノサンゴブロック"
+},
+{
+"w": "シダ",
+"s": "森の地面にシダが生えている。",
+"n": 2,
+"e": "シダ"
+},
+{
+"w": "スカルクセンサー",
+"s": "スカルクセンサーは音に反応する。",
+"n": 2,
+"e": "調律されたスカルクセンサー"
+},
+{
+"w": "ツツジ",
+"s": "春にツツジの花が咲く。",
+"n": 2,
+"e": "ツツジ"
+},
+{
+"w": "ドリップリーフ",
+"s": "ドリップリーフの上に乗ると落ちる。",
+"n": 2,
+"e": "大きなドリップリーフ"
+},
+{
+"w": "ナイリウム",
+"s": "ナイリウムの上に赤い木が生える。",
+"n": 2,
+"e": "真紅のナイリウム"
+},
+{
+"w": "ネザーウォート",
+"s": "ネザーウォートで薬を作る。",
+"n": 2,
+"e": "ネザーウォート"
+},
+{
+"w": "ノウウチワサンゴ",
+"s": "ノウウチワサンゴは丸い形をしている。",
+"n": 2,
+"e": "ノウウチワサンゴ"
+},
+{
+"w": "ノウサンゴ",
+"s": "ノウサンゴを水槽に飾る。",
+"n": 2,
+"e": "ノウサンゴ"
+},
+{
+"w": "ノウサンゴブロック",
+"s": "ノウサンゴブロックで海の家を作る。",
+"n": 2,
+"e": "ノウサンゴブロック"
+},
+{
+"w": "ヒトミソウ",
+"s": "ヒトミソウは小さな青い花です。",
+"n": 2,
+"e": "閉じたヒトミソウ"
+},
+{
+"w": "ブラックストーンレンガ",
+"s": "ブラックストーンレンガの床を張る。",
+"n": 2,
+"e": "ひび割れた磨かれたブラックストーンレンガ"
+},
+{
+"w": "ミズタマウチワサンゴ",
+"s": "ミズタマウチワサンゴが浅い海にある。",
+"n": 2,
+"e": "ミズタマウチワサンゴ"
+},
+{
+"w": "ミズタマサンゴ",
+"s": "ミズタマサンゴはあざやかな色だ。",
+"n": 2,
+"e": "ミズタマサンゴ"
+},
+{
+"w": "ミズタマサンゴブロック",
+"s": "ミズタマサンゴブロックを持ち帰る。",
+"n": 2,
+"e": "ミズタマサンゴブロック"
+},
+{
+"w": "ミレポラウチワサンゴ",
+"s": "ミレポラウチワサンゴを初めて見た。",
+"n": 2,
+"e": "死んだミレポラウチワサンゴ"
+},
+{
+"w": "ミレポラサンゴ",
+"s": "ミレポラサンゴは黄色っぽい。",
+"n": 2,
+"e": "死んだミレポラサンゴ"
+},
+{
+"w": "ミレポラサンゴブロック",
+"s": "ミレポラサンゴブロックを並べる。",
+"n": 2,
+"e": "死んだミレポラサンゴブロック"
+},
+{
+"w": "安山岩",
+"s": "安山岩は灰色の石です。",
+"n": 2,
+"e": "安山岩"
+},
+{
+"w": "枯れ草",
+"s": "枯れ草が地面に落ちている。",
+"n": 2,
+"e": "背の低い枯れ草"
+},
+{
+"w": "熱帯魚",
+"s": "熱帯魚が珊瑚の間を泳ぐ。",
+"n": 2,
+"e": "熱帯魚"
+},
+{
+"w": "竹ブロック",
+"s": "竹ブロックで和風の家を建てる。",
+"n": 2,
+"e": "竹ブロック"
+},
+{
+"w": "羊肉",
+"s": "羊肉を焼いて食べる。",
+"n": 2,
+"e": "焼き羊肉"
+},
+{
+"w": "花崗岩",
+"s": "花崗岩は少し赤みのある石だ。",
+"n": 2,
+"e": "花崗岩"
+},
+{
+"w": "苔ブロック",
+"s": "苔ブロックは柔らかくて緑色だ。",
+"n": 2,
+"e": "苔ブロック"
+},
+{
+"w": "醸造台",
+"s": "醸造台でポーションを作る。",
+"n": 2,
+"e": "醸造台"
+},
+{
+"w": "銅ブロック",
+"s": "銅ブロックは時間がたつと緑になる。",
+"n": 2,
+"e": "銅ブロック"
+},
+{
+"w": "閃緑岩",
+"s": "閃緑岩は白と黒の模様がある。",
+"n": 2,
+"e": "閃緑岩"
+},
+{
+"w": "黒曜石",
+"s": "黒曜石はとても硬い。",
+"n": 2,
+"e": "泣く黒曜石"
+},
+{
+"w": "TNT",
+"s": "TNTに火をつけると爆発する。",
+"n": 1,
+"e": "TNT"
+},
+{
+"w": "いおう",
+"s": "いおうは黄色くて燃えやすい。",
+"n": 1,
+"e": "いおう"
+},
+{
+"w": "くんせいき",
+"s": "くんせいきで肉を焼く。",
+"n": 1,
+"e": "くんせいき"
+},
+{
+"w": "しだれツタ",
+"s": "しだれツタが天井から下がっている。",
+"n": 1,
+"e": "しだれツタ"
+},
+{
+"w": "たきび",
+"s": "たきびのそばで暖まる。",
+"n": 1,
+"e": "たきび"
+},
+{
+"w": "ひうちいし",
+"s": "ひうちいしで火をつける。",
+"n": 1,
+"e": "ひうちいし"
+},
+{
+"w": "アイアンゴーレム",
+"s": "アイアンゴーレムが村を守っている。",
+"n": 1,
+"e": "アイアンゴーレム"
+},
+{
+"w": "アクティベーターレール",
+"s": "アクティベーターレールを線路に置く。",
+"n": 1,
+"e": "アクティベーターレール"
+},
+{
+"w": "アメジストブロック",
+"s": "アメジストブロックは紫色できれいだ。",
+"n": 1,
+"e": "アメジストブロック"
+},
+{
+"w": "アレイ",
+"s": "アレイがアイテムを運んでくれる。",
+"n": 1,
+"e": "アレイ"
+},
+{
+"w": "ウィザー",
+"s": "ウィザーはとても強い敵だ。",
+"n": 1,
+"e": "ウィザー"
+},
+{
+"w": "ウィザースケルトン",
+"s": "ウィザースケルトンが砦にいる。",
+"n": 1,
+"e": "ウィザースケルトン"
+},
+{
+"w": "ウィザーローズ",
+"s": "ウィザーローズに触ると痛い。",
+"n": 1,
+"e": "ウィザーローズ"
+},
+{
+"w": "ウィンドチャージ",
+"s": "ウィンドチャージを投げて高く飛ぶ。",
+"n": 1,
+"e": "ウィンドチャージ"
+},
+{
+"w": "ウォーデン",
+"s": "ウォーデンは音で人を探す。",
+"n": 1,
+"e": "ウォーデン"
+},
+{
+"w": "ウサギシチュー",
+"s": "ウサギシチューを作って食べた。",
+"n": 1,
+"e": "ウサギシチュー"
+},
+{
+"w": "ウマ",
+"s": "ウマに乗って旅をする。",
+"n": 1,
+"e": "ウマ"
+},
+{
+"w": "エメラルドブロック",
+"s": "エメラルドブロックは緑に光る。",
+"n": 1,
+"e": "エメラルドブロック"
+},
+{
+"w": "エメラルド鉱石",
+"s": "山でエメラルド鉱石を掘り当てた。",
+"n": 1,
+"e": "エメラルド鉱石"
+},
+{
+"w": "エルダーガーディアン",
+"s": "エルダーガーディアンが海底神殿にいる。",
+"n": 1,
+"e": "エルダーガーディアン"
+},
+{
+"w": "エンダーアイ",
+"s": "エンダーアイが要塞の方へ飛んでいく。",
+"n": 1,
+"e": "エンダーアイ"
+},
+{
+"w": "エンダーチェスト",
+"s": "エンダーチェストはどこでも開ける。",
+"n": 1,
+"e": "エンダーチェスト"
+},
+{
+"w": "エンダードラゴン",
+"s": "エンダードラゴンと戦う。",
+"n": 1,
+"e": "エンダードラゴン"
+},
+{
+"w": "エンダーパール",
+"s": "エンダーパールを投げて移動する。",
+"n": 1,
+"e": "エンダーパール"
+},
+{
+"w": "エンダーマイト",
+"s": "エンダーマイトは小さくて青い。",
+"n": 1,
+"e": "エンダーマイト"
+},
+{
+"w": "エンダーマン",
+"s": "エンダーマンの目を見てはいけない。",
+"n": 1,
+"e": "エンダーマン"
+},
+{
+"w": "エンチャントテーブル",
+"s": "エンチャントテーブルで剣を強くする。",
+"n": 1,
+"e": "エンチャントテーブル"
+},
+{
+"w": "エンドクリスタル",
+"s": "エンドクリスタルが塔の上にある。",
+"n": 1,
+"e": "エンドクリスタル"
+},
+{
+"w": "エンドストーン",
+"s": "エンドストーンは黄色っぽい石だ。",
+"n": 1,
+"e": "エンドストーン"
+},
+{
+"w": "エンドストーンレンガ",
+"s": "エンドストーンレンガで階段を作る。",
+"n": 1,
+"e": "エンドストーンレンガ"
+},
+{
+"w": "エンドロッド",
+"s": "エンドロッドが白く光る。",
+"n": 1,
+"e": "エンドロッド"
+},
+{
+"w": "エヴォーカー",
+"s": "エヴォーカーは魔法を使ってくる。",
+"n": 1,
+"e": "エヴォーカー"
+},
+{
+"w": "オウムガイ",
+"s": "オウムガイの殻を集めている。",
+"n": 1,
+"e": "オウムガイ"
+},
+{
+"w": "オタマジャクシ",
+"s": "オタマジャクシがカエルになる。",
+"n": 1,
+"e": "オタマジャクシ"
+},
+{
+"w": "カカオ豆",
+"s": "カカオ豆でクッキーを作る。",
+"n": 1,
+"e": "カカオ豆"
+},
+{
+"w": "カッパーゴーレム",
+"s": "カッパーゴーレムは銅でできている。",
+"n": 1,
+"e": "カッパーゴーレム"
+},
+{
+"w": "ガラス板",
+"s": "窓にガラス板をはめる。",
+"n": 1,
+"e": "ガラス板"
+},
+{
+"w": "キノコシチュー",
+"s": "キノコシチューは温かくておいしい。",
+"n": 1,
+"e": "キノコシチュー"
+},
+{
+"w": "クォーツレンガ",
+"s": "クォーツレンガの床は白い。",
+"n": 1,
+"e": "クォーツレンガ"
+},
+{
+"w": "クリーキング",
+"s": "クリーキングが暗い森で動き出す。",
+"n": 1,
+"e": "クリーキング"
+},
+{
+"w": "クリーパー",
+"s": "クリーパーが近づくと爆発する。",
+"n": 1,
+"e": "クリーパー"
+},
+{
+"w": "グロウストーン",
+"s": "グロウストーンは明るく光る。",
+"n": 1,
+"e": "グロウストーン"
+},
+{
+"w": "グロウストーンダスト",
+"s": "グロウストーンダストで薬を強くする。",
+"n": 1,
+"e": "グロウストーンダスト"
+},
+{
+"w": "グロウベリー",
+"s": "グロウベリーが洞窟で光っている。",
+"n": 1,
+"e": "グロウベリー"
+},
+{
+"w": "コンジット",
+"s": "コンジットがあれば水の中でも息ができる。",
+"n": 1,
+"e": "コンジット"
+},
+{
+"w": "コンブ",
+"s": "海の中でコンブが揺れている。",
+"n": 1,
+"e": "コンブ"
+},
+{
+"w": "コンポスター",
+"s": "コンポスターに野菜を入れる。",
+"n": 1,
+"e": "コンポスター"
+},
+{
+"w": "コーラスフラワー",
+"s": "コーラスフラワーがエンドに咲いている。",
+"n": 1,
+"e": "コーラスフラワー"
+},
+{
+"w": "サトウキビ",
+"s": "川のそばにサトウキビが生える。",
+"n": 1,
+"e": "サトウキビ"
+},
+{
+"w": "サルファーキューブ",
+"s": "サルファーキューブは黄色い。",
+"n": 1,
+"e": "サルファーキューブ"
+},
+{
+"w": "シュルカー",
+"s": "シュルカーが弾を撃ってくる。",
+"n": 1,
+"e": "シュルカー"
+},
+{
+"w": "シュルームライト",
+"s": "シュルームライトがネザーで光る。",
+"n": 1,
+"e": "シュルームライト"
+},
+{
+"w": "シルバーフィッシュ",
+"s": "石の中からシルバーフィッシュが出てきた。",
+"n": 1,
+"e": "シルバーフィッシュ"
+},
+{
+"w": "シーピクルス",
+"s": "シーピクルスが海の底で光る。",
+"n": 1,
+"e": "シーピクルス"
+},
+{
+"w": "シーランタン",
+"s": "シーランタンで海の家を明るくする。",
+"n": 1,
+"e": "シーランタン"
+},
+{
+"w": "ジュークボックス",
+"s": "ジュークボックスで音楽をかける。",
+"n": 1,
+"e": "ジュークボックス"
+},
+{
+"w": "スイートベリー",
+"s": "スイートベリーを摘んで食べた。",
+"n": 1,
+"e": "スイートベリー"
+},
+{
+"w": "スカルク",
+"s": "深い暗闇にスカルクが広がっている。",
+"n": 1,
+"e": "スカルク"
+},
+{
+"w": "スカルクカタリスト",
+"s": "スカルクカタリストが周りを黒く変える。",
+"n": 1,
+"e": "スカルクカタリスト"
+},
+{
+"w": "スカルクシュリーカー",
+"s": "スカルクシュリーカーが大きな音を出す。",
+"n": 1,
+"e": "スカルクシュリーカー"
+},
+{
+"w": "スカルクヴェイン",
+"s": "スカルクヴェインが壁を覆っている。",
+"n": 1,
+"e": "スカルクヴェイン"
+},
+{
+"w": "スケルトンホース",
+"s": "雷の後にスケルトンホースが現れた。",
+"n": 1,
+"e": "スケルトンホース"
+},
+{
+"w": "スズラン",
+"s": "スズランの白い花が咲いている。",
+"n": 1,
+"e": "スズラン"
+},
+{
+"w": "ストライダー",
+"s": "ストライダーは溶岩の上を歩く。",
+"n": 1,
+"e": "ストライダー"
+},
+{
+"w": "スニッファー",
+"s": "スニッファーが古い種を探してくれる。",
+"n": 1,
+"e": "スニッファー"
+},
+{
+"w": "スノウゴーレム",
+"s": "スノウゴーレムが雪玉を投げる。",
+"n": 1,
+"e": "スノウゴーレム"
+},
+{
+"w": "スライムブロック",
+"s": "スライムブロックの上で跳ねる。",
+"n": 1,
+"e": "スライムブロック"
+},
+{
+"w": "スライムボール",
+"s": "スライムボールでピストンを作る。",
+"n": 1,
+"e": "スライムボール"
+},
+{
+"w": "ソウルサンド",
+"s": "ソウルサンドの上は歩きにくい。",
+"n": 1,
+"e": "ソウルサンド"
+},
+{
+"w": "ソウルソイル",
+"s": "ソウルソイルの上で青い火が燃える。",
+"n": 1,
+"e": "ソウルソイル"
+},
+{
+"w": "ゾグリン",
+"s": "ゾグリンは何にでも向かってくる。",
+"n": 1,
+"e": "ゾグリン"
+},
+{
+"w": "ゾンビオウムガイ",
+"s": "ゾンビオウムガイを初めて見た。",
+"n": 1,
+"e": "ゾンビオウムガイ"
+},
+{
+"w": "ゾンビピグリン",
+"s": "ゾンビピグリンがネザーを歩いている。",
+"n": 1,
+"e": "ゾンビピグリン"
+},
+{
+"w": "ゾンビホース",
+"s": "ゾンビホースはめずらしい。",
+"n": 1,
+"e": "ゾンビホース"
+},
+{
+"w": "タラ入りバケツ",
+"s": "タラ入りバケツを持って帰る。",
+"n": 1,
+"e": "タラ入りバケツ"
+},
+{
+"w": "ダイヤモンドブロック",
+"s": "ダイヤモンドブロックは高価だ。",
+"n": 1,
+"e": "ダイヤモンドブロック"
+},
+{
+"w": "ダイヤモンド鉱石",
+"s": "深い所でダイヤモンド鉱石を見つけた。",
+"n": 1,
+"e": "ダイヤモンド鉱石"
+},
+{
+"w": "ダークプリズマリン",
+"s": "ダークプリズマリンで神殿を作る。",
+"n": 1,
+"e": "ダークプリズマリン"
+},
+{
+"w": "ディスペンサー",
+"s": "ディスペンサーが矢を撃つ。",
+"n": 1,
+"e": "ディスペンサー"
+},
+{
+"w": "ディテクターレール",
+"s": "ディテクターレールがトロッコを感じ取る。",
+"n": 1,
+"e": "ディテクターレール"
+},
+{
+"w": "トラップチェスト",
+"s": "トラップチェストを開けると信号が出る。",
+"n": 1,
+"e": "トラップチェスト"
+},
+{
+"w": "トリップワイヤーフック",
+"s": "トリップワイヤーフックで罠を作る。",
+"n": 1,
+"e": "トリップワイヤーフック"
+},
+{
+"w": "トーチフラワー",
+"s": "トーチフラワーはオレンジ色の花だ。",
+"n": 1,
+"e": "トーチフラワー"
+},
+{
+"w": "ドラウンド",
+"s": "ドラウンドが水の中から出てきた。",
+"n": 1,
+"e": "ドラウンド"
+},
+{
+"w": "ドロッパー",
+"s": "ドロッパーがアイテムを落とす。",
+"n": 1,
+"e": "ドロッパー"
+},
+{
+"w": "ネザライトインゴット",
+"s": "ネザライトインゴットで剣を強くする。",
+"n": 1,
+"e": "ネザライトインゴット"
+},
+{
+"w": "ネザライトブロック",
+"s": "ネザライトブロックはとても丈夫だ。",
+"n": 1,
+"e": "ネザライトブロック"
+},
+{
+"w": "ネザーウォートブロック",
+"s": "ネザーウォートブロックは赤い。",
+"n": 1,
+"e": "ネザーウォートブロック"
+},
+{
+"w": "ネザークォーツ",
+"s": "ネザークォーツを掘って集める。",
+"n": 1,
+"e": "ネザークォーツ"
+},
+{
+"w": "ネザークォーツ鉱石",
+"s": "ネザークォーツ鉱石が壁に見える。",
+"n": 1,
+"e": "ネザークォーツ鉱石"
+},
+{
+"w": "ネザースプラウト",
+"s": "ネザースプラウトが青く生えている。",
+"n": 1,
+"e": "ネザースプラウト"
+},
+{
+"w": "ネザーラック",
+"s": "ネザーラックは赤くて柔らかい。",
+"n": 1,
+"e": "ネザーラック"
+},
+{
+"w": "ハスク",
+"s": "砂漠でハスクに襲われた。",
+"n": 1,
+"e": "ハスク"
+},
+{
+"w": "ハチミツブロック",
+"s": "ハチミツブロックはべたべたする。",
+"n": 1,
+"e": "ハチミツブロック"
+},
+{
+"w": "ハニカム",
+"s": "ハニカムで巣箱を作る。",
+"n": 1,
+"e": "ハニカム"
+},
+{
+"w": "ハニカムブロック",
+"s": "ハニカムブロックは蜂の巣の模様だ。",
+"n": 1,
+"e": "ハニカムブロック"
+},
+{
+"w": "バラの低木",
+"s": "庭にバラの低木を植える。",
+"n": 1,
+"e": "バラの低木"
+},
+{
+"w": "パワードレール",
+"s": "パワードレールでトロッコが速くなる。",
+"n": 1,
+"e": "パワードレール"
+},
+{
+"w": "パンプキンパイ",
+"s": "パンプキンパイを焼いて食べた。",
+"n": 1,
+"e": "パンプキンパイ"
+},
+{
+"w": "パーチド",
+"s": "パーチドは乾いた土地に現れる。",
+"n": 1,
+"e": "パーチド"
+},
+{
+"w": "ヒカリイカ",
+"s": "ヒカリイカが暗い海で光る。",
+"n": 1,
+"e": "ヒカリイカ"
+},
+{
+"w": "ヒカリゴケ",
+"s": "洞窟の壁でヒカリゴケが光る。",
+"n": 1,
+"e": "ヒカリゴケ"
+},
+{
+"w": "ヒスイラン",
+"s": "ヒスイランは青緑色の花です。",
+"n": 1,
+"e": "ヒスイラン"
+},
+{
+"w": "ヒナソウ",
+"s": "ヒナソウが草原に咲いている。",
+"n": 1,
+"e": "ヒナソウ"
+},
+{
+"w": "ビーコン",
+"s": "ビーコンの光が空まで届く。",
+"n": 1,
+"e": "ビーコン"
+},
+{
+"w": "ビートルート",
+"s": "畑でビートルートを育てる。",
+"n": 1,
+"e": "ビートルート"
+},
+{
+"w": "ビートルートスープ",
+"s": "ビートルートスープは赤い色をしている。",
+"n": 1,
+"e": "ビートルートスープ"
+},
+{
+"w": "ピグリン",
+"s": "ピグリンは金が好きだ。",
+"n": 1,
+"e": "ピグリン"
+},
+{
+"w": "ピグリンブルート",
+"s": "ピグリンブルートはとても強い。",
+"n": 1,
+"e": "ピグリンブルート"
+},
+{
+"w": "ピリジャー",
+"s": "ピリジャーが村を襲いに来た。",
+"n": 1,
+"e": "ピリジャー"
+},
+{
+"w": "ファイヤーチャージ",
+"s": "ファイヤーチャージで火をつける。",
+"n": 1,
+"e": "ファイヤーチャージ"
+},
+{
+"w": "ファントムの皮膜",
+"s": "ファントムの皮膜で道具を直す。",
+"n": 1,
+"e": "ファントムの皮膜"
+},
+{
+"w": "フランスギク",
+"s": "フランスギクの白い花が咲く。",
+"n": 1,
+"e": "フランスギク"
+},
+{
+"w": "ブリーズ",
+"s": "ブリーズが風で攻撃してくる。",
+"n": 1,
+"e": "ブリーズ"
+},
+{
+"w": "ブリーズロッド",
+"s": "ブリーズロッドを手に入れた。",
+"n": 1,
+"e": "ブリーズロッド"
+},
+{
+"w": "ブレイズパウダー",
+"s": "ブレイズパウダーで薬を作る。",
+"n": 1,
+"e": "ブレイズパウダー"
+},
+{
+"w": "ブレイズロッド",
+"s": "ブレイズロッドを集めている。",
+"n": 1,
+"e": "ブレイズロッド"
+},
+{
+"w": "プリズマリン",
+"s": "プリズマリンは海の石だ。",
+"n": 1,
+"e": "プリズマリン"
+},
+{
+"w": "プリズマリンクリスタル",
+"s": "プリズマリンクリスタルが光っている。",
+"n": 1,
+"e": "プリズマリンクリスタル"
+},
+{
+"w": "プリズマリンレンガ",
+"s": "プリズマリンレンガで壁を作る。",
+"n": 1,
+"e": "プリズマリンレンガ"
+},
+{
+"w": "プルプァブロック",
+"s": "プルプァブロックは紫色だ。",
+"n": 1,
+"e": "プルプァブロック"
+},
+{
+"w": "ヘビーコア",
+"s": "ヘビーコアでメイスを作る。",
+"n": 1,
+"e": "ヘビーコア"
+},
+{
+"w": "ベイクドポテト",
+"s": "ベイクドポテトを食べて元気になる。",
+"n": 1,
+"e": "ベイクドポテト"
+},
+{
+"w": "ホグリン",
+"s": "ホグリンはネザーの動物だ。",
+"n": 1,
+"e": "ホグリン"
+},
+{
+"w": "ホッパー",
+"s": "ホッパーがアイテムを吸い込む。",
+"n": 1,
+"e": "ホッパー"
+},
+{
+"w": "ボグド",
+"s": "ボグドが沼に現れる。",
+"n": 1,
+"e": "ボグド"
+},
+{
+"w": "ポドゾル",
+"s": "ポドゾルの上にキノコが育つ。",
+"n": 1,
+"e": "ポドゾル"
+},
+{
+"w": "マグマキューブ",
+"s": "マグマキューブが跳ねてくる。",
+"n": 1,
+"e": "マグマキューブ"
+},
+{
+"w": "マグマクリーム",
+"s": "マグマクリームで火に強くなる。",
+"n": 1,
+"e": "マグマクリーム"
+},
+{
+"w": "マグマブロック",
+"s": "マグマブロックの上は熱い。",
+"n": 1,
+"e": "マグマブロック"
+},
+{
+"w": "ミツバチ",
+"s": "ミツバチが花の周りを飛んでいる。",
+"n": 1,
+"e": "ミツバチ"
+},
+{
+"w": "ムーシュルーム",
+"s": "ムーシュルームは赤い牛だ。",
+"n": 1,
+"e": "ムーシュルーム"
+},
+{
+"w": "メイス",
+"s": "メイスで強く叩く。",
+"n": 1,
+"e": "メイス"
+},
+{
+"w": "ヤグルマギク",
+"s": "ヤグルマギクは青い花です。",
+"n": 1,
+"e": "ヤグルマギク"
+},
+{
+"w": "ヤマネコ",
+"s": "ヤマネコがジャングルに住んでいる。",
+"n": 1,
+"e": "ヤマネコ"
+},
+{
+"w": "ラクダハスク",
+"s": "ラクダハスクが砂漠を歩いている。",
+"n": 1,
+"e": "ラクダハスク"
+},
+{
+"w": "ラバ",
+"s": "ラバが荷物を運んでくれる。",
+"n": 1,
+"e": "ラバ"
+},
+{
+"w": "ラピスラズリ",
+"s": "ラピスラズリは青い石です。",
+"n": 1,
+"e": "ラピスラズリ"
+},
+{
+"w": "ラピスラズリブロック",
+"s": "ラピスラズリブロックを飾る。",
+"n": 1,
+"e": "ラピスラズリブロック"
+},
+{
+"w": "ラピスラズリ鉱石",
+"s": "ラピスラズリ鉱石を掘り当てた。",
+"n": 1,
+"e": "ラピスラズリ鉱石"
+},
+{
+"w": "ラヴェジャー",
+"s": "ラヴェジャーが柵を壊していく。",
+"n": 1,
+"e": "ラヴェジャー"
+},
+{
+"w": "リカバリーコンパス",
+"s": "リカバリーコンパスが死んだ場所を指す。",
+"n": 1,
+"e": "リカバリーコンパス"
+},
+{
+"w": "リスポーンアンカー",
+"s": "リスポーンアンカーをネザーに置く。",
+"n": 1,
+"e": "リスポーンアンカー"
+},
+{
+"w": "レッドストーンコンパレーター",
+"s": "レッドストーンコンパレーターで信号を比べる。",
+"n": 1,
+"e": "レッドストーンコンパレーター"
+},
+{
+"w": "レッドストーンダスト",
+"s": "レッドストーンダストを地面に並べる。",
+"n": 1,
+"e": "レッドストーンダスト"
+},
+{
+"w": "レッドストーントーチ",
+"s": "レッドストーントーチが赤く光る。",
+"n": 1,
+"e": "レッドストーントーチ"
+},
+{
+"w": "レッドストーンブロック",
+"s": "レッドストーンブロックは信号を出す。",
+"n": 1,
+"e": "レッドストーンブロック"
+},
+{
+"w": "レッドストーンランプ",
+"s": "レッドストーンランプが点いた。",
+"n": 1,
+"e": "レッドストーンランプ"
+},
+{
+"w": "レッドストーンリピーター",
+"s": "レッドストーンリピーターで信号を延ばす。",
+"n": 1,
+"e": "レッドストーンリピーター"
+},
+{
+"w": "レッドストーン鉱石",
+"s": "レッドストーン鉱石が赤く光った。",
+"n": 1,
+"e": "レッドストーン鉱石"
+},
+{
+"w": "ロケット花火",
+"s": "ロケット花火で空を飛ぶ。",
+"n": 1,
+"e": "ロケット花火"
+},
+{
+"w": "ロードストーン",
+"s": "ロードストーンでコンパスを合わせる。",
+"n": 1,
+"e": "ロードストーン"
+},
+{
+"w": "ヴィンディケーター",
+"s": "ヴィンディケーターが斧で襲ってくる。",
+"n": 1,
+"e": "ヴィンディケーター"
+},
+{
+"w": "ヴェックス",
+"s": "ヴェックスは壁をすり抜ける。",
+"n": 1,
+"e": "ヴェックス"
+},
+{
+"w": "不死のトーテム",
+"s": "不死のトーテムが命を救ってくれた。",
+"n": 1,
+"e": "不死のトーテム"
+},
+{
+"w": "乾燥した昆布ブロック",
+"s": "乾燥した昆布ブロックは燃料になる。",
+"n": 1,
+"e": "乾燥した昆布ブロック"
+},
+{
+"w": "作業台",
+"s": "作業台で道具を作る。",
+"n": 1,
+"e": "作業台"
+},
+{
+"w": "大釜",
+"s": "大釜に水をためる。",
+"n": 1,
+"e": "大釜"
+},
+{
+"w": "方解石",
+"s": "方解石は白くてなめらかだ。",
+"n": 1,
+"e": "方解石"
+},
+{
+"w": "日照センサー",
+"s": "日照センサーが朝の光に反応する。",
+"n": 1,
+"e": "日照センサー"
+},
+{
+"w": "書見台",
+"s": "書見台に本を置く。",
+"n": 1,
+"e": "書見台"
+},
+{
+"w": "村人ゾンビ",
+"s": "村人ゾンビを治してあげた。",
+"n": 1,
+"e": "村人ゾンビ"
+},
+{
+"w": "樹脂ブロック",
+"s": "樹脂ブロックはオレンジ色だ。",
+"n": 1,
+"e": "樹脂ブロック"
+},
+{
+"w": "機織り機",
+"s": "機織り機で旗の模様を作る。",
+"n": 1,
+"e": "機織り機"
+},
+{
+"w": "歪んだウォートブロック",
+"s": "歪んだウォートブロックは青緑色だ。",
+"n": 1,
+"e": "歪んだウォートブロック"
+},
+{
+"w": "水入りスプラッシュ瓶",
+"s": "水入りスプラッシュ瓶を投げる。",
+"n": 1,
+"e": "水入りスプラッシュ瓶"
+},
+{
+"w": "水入りバケツ",
+"s": "水入りバケツで畑に水をやる。",
+"n": 1,
+"e": "水入りバケツ"
+},
+{
+"w": "水入り残留瓶",
+"s": "水入り残留瓶を用意する。",
+"n": 1,
+"e": "水入り残留瓶"
+},
+{
+"w": "水入り瓶",
+"s": "水入り瓶から薬を作る。",
+"n": 1,
+"e": "水入り瓶"
+},
+{
+"w": "泥レンガ",
+"s": "泥レンガで家を建てる。",
+"n": 1,
+"e": "泥レンガ"
+},
+{
+"w": "洞窟グモ",
+"s": "洞窟グモは毒を持っている。",
+"n": 1,
+"e": "洞窟グモ"
+},
+{
+"w": "深層エメラルド鉱石",
+"s": "深層エメラルド鉱石はめずらしい。",
+"n": 1,
+"e": "深層エメラルド鉱石"
+},
+{
+"w": "深層ダイヤモンド鉱石",
+"s": "深層ダイヤモンド鉱石を見つけた。",
+"n": 1,
+"e": "深層ダイヤモンド鉱石"
+},
+{
+"w": "深層ラピスラズリ鉱石",
+"s": "深層ラピスラズリ鉱石を掘る。",
+"n": 1,
+"e": "深層ラピスラズリ鉱石"
+},
+{
+"w": "深層レッドストーン鉱石",
+"s": "深層レッドストーン鉱石が光る。",
+"n": 1,
+"e": "深層レッドストーン鉱石"
+},
+{
+"w": "深層石炭鉱石",
+"s": "深層石炭鉱石はよく見つかる。",
+"n": 1,
+"e": "深層石炭鉱石"
+},
+{
+"w": "深層銅鉱石",
+"s": "深層銅鉱石を集めている。",
+"n": 1,
+"e": "深層銅鉱石"
+},
+{
+"w": "溶鉱炉",
+"s": "溶鉱炉は鉄を早く溶かす。",
+"n": 1,
+"e": "溶鉱炉"
+},
+{
+"w": "火打石と打ち金",
+"s": "火打石と打ち金で火をつける。",
+"n": 1,
+"e": "火打石と打ち金"
+},
+{
+"w": "焼き鮭",
+"s": "焼き鮭はとてもおいしい。",
+"n": 1,
+"e": "焼き鮭"
+},
+{
+"w": "焼き鱈",
+"s": "焼き鱈を食べて元気になる。",
+"n": 1,
+"e": "焼き鱈"
+},
+{
+"w": "熱帯魚入りバケツ",
+"s": "熱帯魚入りバケツを水槽に移す。",
+"n": 1,
+"e": "熱帯魚入りバケツ"
+},
+{
+"w": "生の兎肉",
+"s": "生の兎肉を焼いて食べる。",
+"n": 1,
+"e": "生の兎肉"
+},
+{
+"w": "生鮭",
+"s": "川で生鮭を釣った。",
+"n": 1,
+"e": "生鮭"
+},
+{
+"w": "生鱈",
+"s": "生鱈を焼いて食べる。",
+"n": 1,
+"e": "生鱈"
+},
+{
+"w": "矢細工台",
+"s": "矢細工台で矢を作る。",
+"n": 1,
+"e": "矢細工台"
+},
+{
+"w": "石切台",
+"s": "石切台で石を切る。",
+"n": 1,
+"e": "石切台"
+},
+{
+"w": "石炭ブロック",
+"s": "石炭ブロックは長く燃える。",
+"n": 1,
+"e": "石炭ブロック"
+},
+{
+"w": "石炭鉱石",
+"s": "山で石炭鉱石を掘る。",
+"n": 1,
+"e": "石炭鉱石"
+},
+{
+"w": "硫黄レンガ",
+"s": "硫黄レンガは黄色い。",
+"n": 1,
+"e": "硫黄レンガ"
+},
+{
+"w": "竹細工",
+"s": "竹細工で家具を作る。",
+"n": 1,
+"e": "竹細工"
+},
+{
+"w": "粘土玉",
+"s": "川辺で粘土玉を集める。",
+"n": 1,
+"e": "粘土玉"
+},
+{
+"w": "粘着ピストン",
+"s": "粘着ピストンがブロックを引き戻す。",
+"n": 1,
+"e": "粘着ピストン"
+},
+{
+"w": "自動作業台",
+"s": "自動作業台が道具を作り続ける。",
+"n": 1,
+"e": "自動作業台"
+},
+{
+"w": "草ブロック",
+"s": "草ブロックの上に花が咲く。",
+"n": 1,
+"e": "草ブロック"
+},
+{
+"w": "製図台",
+"s": "製図台で地図を広げる。",
+"n": 1,
+"e": "製図台"
+},
+{
+"w": "軽量用感圧板",
+"s": "軽量用感圧板は小さな物にも反応する。",
+"n": 1,
+"e": "軽量用感圧板"
+},
+{
+"w": "辰砂レンガ",
+"s": "辰砂レンガは赤い模様だ。",
+"n": 1,
+"e": "辰砂レンガ"
+},
+{
+"w": "遮光ガラス",
+"s": "遮光ガラスは光を通さない。",
+"n": 1,
+"e": "遮光ガラス"
+},
+{
+"w": "重量用感圧板",
+"s": "重量用感圧板は重い物で動く。",
+"n": 1,
+"e": "重量用感圧板"
+},
+{
+"w": "野花",
+"s": "野原に野花がたくさん咲いている。",
+"n": 1,
+"e": "野花"
+},
+{
+"w": "金インゴット",
+"s": "金インゴットで時計を作る。",
+"n": 1,
+"e": "金インゴット"
+},
+{
+"w": "金ブロック",
+"s": "金ブロックはきらきら光る。",
+"n": 1,
+"e": "金ブロック"
+},
+{
+"w": "金鉱石",
+"s": "山の中で金鉱石を掘った。",
+"n": 1,
+"e": "金鉱石"
+},
+{
+"w": "釣竿",
+"s": "釣竿で魚を釣る。",
+"n": 1,
+"e": "釣竿"
+},
+{
+"w": "鉄インゴット",
+"s": "鉄インゴットで剣を作る。",
+"n": 1,
+"e": "鉄インゴット"
+},
+{
+"w": "鉄ブロック",
+"s": "鉄ブロックは九個の鉄でできる。",
+"n": 1,
+"e": "鉄ブロック"
+},
+{
+"w": "鉄塊",
+"s": "鉄塊を集めてインゴットにする。",
+"n": 1,
+"e": "鉄塊"
+},
+{
+"w": "鉄鉱石",
+"s": "洞窟で鉄鉱石を見つけた。",
+"n": 1,
+"e": "鉄鉱石"
+},
+{
+"w": "銅インゴット",
+"s": "銅インゴットで望遠鏡を作る。",
+"n": 1,
+"e": "銅インゴット"
+},
+{
+"w": "銅鉱石",
+"s": "銅鉱石は山でよく取れる。",
+"n": 1,
+"e": "銅鉱石"
+},
+{
+"w": "鍛冶台",
+"s": "鍛冶台で装備を強くする。",
+"n": 1,
+"e": "鍛冶台"
+},
+{
+"w": "鍾乳石",
+"s": "洞窟の天井から鍾乳石が下がっている。",
+"n": 1,
+"e": "鍾乳石"
+},
+{
+"w": "防具立て",
+"s": "防具立てに鎧を飾る。",
+"n": 1,
+"e": "防具立て"
+},
+{
+"w": "雪ブロック",
+"s": "雪ブロックで雪だるまを作る。",
+"n": 1,
+"e": "雪ブロック"
+},
+{
+"w": "青氷",
+"s": "青氷の上はとても滑る。",
+"n": 1,
+"e": "青氷"
+},
+{
+"w": "音符ブロック",
+"s": "音符ブロックを叩くと音が鳴る。",
+"n": 1,
+"e": "音符ブロック"
+},
+{
+"w": "飾り壺",
+"s": "飾り壺に細かい模様がついている。",
+"n": 1,
+"e": "飾り壺"
+},
+{
+"w": "養蜂箱",
+"s": "養蜂箱から蜂蜜を取る。",
+"n": 1,
+"e": "養蜂箱"
+},
+{
+"w": "骨ブロック",
+"s": "骨ブロックを砂の中で見つけた。",
+"n": 1,
+"e": "骨ブロック"
+},
+{
+"w": "骨粉",
+"s": "骨粉をまくと植物が育つ。",
+"n": 1,
+"e": "骨粉"
+}
+]
+}</script>
+<script>
+(function () {
+  "use strict";
+
+  var ITEMS = JSON.parse(document.getElementById("data").textContent).items;
+  var TOTAL = ITEMS.length;
+  var index = 0;
+
+  var dir = null;            // FileSystemDirectoryHandle
+  var doneSet = {};          // word -> {file, text}
+  var edits = {};            // word -> edited sentence, kept locally
+  var ctx = null, stream = null, node = null, source = null;
+  var chunks = [], recording = false, rate = 48000;
+  var take = null;           // {data: Float32Array, rate: n}
+  var trimA = 0, trimB = 1;  // 0..1 of the take
+  var preview = null;
+
+  try { edits = JSON.parse(localStorage.getItem("jpv-rec-edits") || "{}"); }
+  catch (e) { edits = {}; }
+
+  function saveEdits() {
+    try { localStorage.setItem("jpv-rec-edits", JSON.stringify(edits)); }
+    catch (e) { /* private window */ }
+  }
+
+  // ---- a scrap of IndexedDB, only to remember the folder ------------------
+  function idb(fn) {
+    return new Promise(function (res, rej) {
+      var open = indexedDB.open("jpv-recorder", 1);
+      open.onupgradeneeded = function () {
+        open.result.createObjectStore("kv");
+      };
+      open.onerror = function () { rej(open.error); };
+      open.onsuccess = function () {
+        var db = open.result;
+        var tx = db.transaction("kv", "readwrite");
+        var req = fn(tx.objectStore("kv"));
+        tx.oncomplete = function () { db.close(); res(req && req.result); };
+        tx.onerror = function () { db.close(); rej(tx.error); };
+      };
+    });
+  }
+  var putHandle = function (h) { return idb(function (s) { s.put(h, "dir"); }); };
+  var getHandle = function () { return idb(function (s) { return s.get("dir"); }); };
+
+  // ---- WAV, written by hand so the take is never encoded twice ------------
+  function wav(samples, sampleRate) {
+    var n = samples.length;
+    var buf = new ArrayBuffer(44 + n * 2);
+    var v = new DataView(buf);
+    function str(off, s) {
+      for (var i = 0; i < s.length; i++) { v.setUint8(off + i, s.charCodeAt(i)); }
+    }
+    str(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); str(8, "WAVE");
+    str(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+    v.setUint16(22, 1, true); v.setUint32(24, sampleRate, true);
+    v.setUint32(28, sampleRate * 2, true); v.setUint16(32, 2, true);
+    v.setUint16(34, 16, true); str(36, "data"); v.setUint32(40, n * 2, true);
+    for (var i = 0; i < n; i++) {
+      var s = Math.max(-1, Math.min(1, samples[i]));
+      v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    }
+    return new Blob([buf], { type: "audio/wav" });
+  }
+
+  // ---- microphone --------------------------------------------------------
+  var WORKLET =
+    'class Cap extends AudioWorkletProcessor{' +
+    'process(i){var c=i[0]&&i[0][0];if(c)this.port.postMessage(new Float32Array(c));return true;}}' +
+    'registerProcessor("cap",Cap);';
+
+  function openMic() {
+    if (ctx) { return Promise.resolve(); }
+    return navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false,
+               autoGainControl: false }
+    }).then(function (s) {
+      stream = s;
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      rate = ctx.sampleRate;
+      source = ctx.createMediaStreamSource(s);
+      var url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
+      return ctx.audioWorklet.addModule(url).then(function () {
+        node = new AudioWorkletNode(ctx, "cap");
+        node.port.onmessage = function (e) { onAudio(e.data); };
+        source.connect(node);
+        // A worklet with nothing downstream is still pulled; this keeps it
+        // running without putting the microphone into the speakers.
+        var mute = ctx.createGain();
+        mute.gain.value = 0;
+        node.connect(mute).connect(ctx.destination);
+      }, function () {
+        // Older engines: the deprecated node still captures fine.
+        node = ctx.createScriptProcessor(4096, 1, 1);
+        node.onaudioprocess = function (e) {
+          onAudio(new Float32Array(e.inputBuffer.getChannelData(0)));
+        };
+        var mute = ctx.createGain();
+        mute.gain.value = 0;
+        source.connect(node);
+        node.connect(mute).connect(ctx.destination);
+      });
+    });
+  }
+
+  function onAudio(frame) {
+    if (!recording) {
+      level(frame);
+      return;
+    }
+    chunks.push(frame);
+    level(frame);
+  }
+
+  function level(frame) {
+    var m = 0;
+    for (var i = 0; i < frame.length; i++) { m = Math.max(m, Math.abs(frame[i])); }
+    var el = document.getElementById("meter-i");
+    if (el) { el.style.width = Math.min(100, m * 140) + "%"; }
+  }
+
+  // ---- silence, suggested rather than applied ----------------------------
+  function suggestTrim(data) {
+    var win = Math.floor(rate * 0.02), peak = 0, env = [];
+    for (var i = 0; i < data.length; i += win) {
+      var m = 0;
+      for (var j = i; j < Math.min(i + win, data.length); j++) {
+        m = Math.max(m, Math.abs(data[j]));
+      }
+      env.push(m);
+      peak = Math.max(peak, m);
+    }
+    if (peak < 0.01) { return [0, 1]; }
+    var gate = Math.max(0.012, peak * 0.06);
+    var a = 0, b = env.length - 1;
+    while (a < env.length && env[a] < gate) { a++; }
+    while (b > a && env[b] < gate) { b--; }
+    // A tenth of a second of air on each side: a hard cut on the gate clips
+    // the attack of a consonant and the tail of a devoiced vowel, and this
+    // language is full of both.
+    var pad = Math.ceil(0.10 / 0.02);
+    a = Math.max(0, a - pad);
+    b = Math.min(env.length - 1, b + pad);
+    return [a / env.length, (b + 1) / env.length];
+  }
+
+  // ---- waveform ----------------------------------------------------------
+  function drawWave() {
+    var wrap = document.getElementById("wave");
+    var cv = document.getElementById("cv");
+    if (!cv) { return; }
+    var w = cv.clientWidth, h = cv.clientHeight;
+    var dpr = window.devicePixelRatio || 1;
+    cv.width = w * dpr; cv.height = h * dpr;
+    var g = cv.getContext("2d");
+    g.scale(dpr, dpr);
+    g.clearRect(0, 0, w, h);
+    if (!take) { return; }
+    wrap.classList.add("has-audio");
+
+    var data = take.data, mid = h / 2;
+    var step = Math.max(1, Math.floor(data.length / w));
+    for (var x = 0; x < w; x++) {
+      var lo = 1, hi = -1;
+      var s = x * step, e = Math.min(data.length, s + step);
+      for (var i = s; i < e; i++) {
+        if (data[i] < lo) { lo = data[i]; }
+        if (data[i] > hi) { hi = data[i]; }
+      }
+      var inside = (x / w) >= trimA && (x / w) <= trimB;
+      g.fillStyle = inside ? "#d9a441" : "#4a3c1d";
+      var y1 = mid - hi * mid * 0.92, y2 = mid - lo * mid * 0.92;
+      g.fillRect(x, y1, 1, Math.max(1, y2 - y1));
+    }
+    g.fillStyle = "rgba(0,0,0,0.42)";
+    g.fillRect(0, 0, trimA * w, h);
+    g.fillRect(trimB * w, 0, w - trimB * w, h);
+
+    document.getElementById("hA").style.left = (trimA * w - 5) + "px";
+    document.getElementById("hB").style.left = (trimB * w - 5) + "px";
+    var kept = (trimB - trimA) * data.length / take.rate;
+    document.getElementById("d-len").textContent = kept.toFixed(2) + " s";
+  }
+
+  function trimmed() {
+    var a = Math.floor(trimA * take.data.length);
+    var b = Math.floor(trimB * take.data.length);
+    return take.data.subarray(a, Math.max(a + 1, b));
+  }
+
+  // ---- recording ---------------------------------------------------------
+  function toggleRecord() {
+    if (!ctx) {
+      openMic().then(toggleRecord, function (err) {
+        say("マイクが使えません: " + err.name);
+      });
+      return;
+    }
+    var btn = document.getElementById("rec");
+    if (!recording) {
+      chunks = [];
+      recording = true;
+      take = null;
+      btn.classList.add("on");
+      btn.firstChild.nodeValue = "■ 停止";
+      document.getElementById("wave").classList.remove("has-audio");
+      drawWave();
+      paintButtons();
+      return;
+    }
+    recording = false;
+    btn.classList.remove("on");
+    btn.firstChild.nodeValue = "● 録音";
+    var n = 0, i;
+    for (i = 0; i < chunks.length; i++) { n += chunks[i].length; }
+    var all = new Float32Array(n), at = 0;
+    for (i = 0; i < chunks.length; i++) { all.set(chunks[i], at); at += chunks[i].length; }
+    chunks = [];
+    if (n < rate * 0.15) { say("短すぎます。もう一度録音してください。"); paintButtons(); return; }
+    take = { data: all, rate: rate };
+    var s = suggestTrim(all);
+    trimA = s[0]; trimB = s[1];
+    drawWave();
+    paintButtons();
+    playTake();
+  }
+
+  function playTake() {
+    if (!take) { return; }
+    if (preview) { try { preview.stop(); } catch (e) { /* done */ } }
+    var seg = trimmed();
+    var buf = ctx.createBuffer(1, seg.length, take.rate);
+    buf.getChannelData(0).set(seg);
+    preview = ctx.createBufferSource();
+    preview.buffer = buf;
+    preview.connect(ctx.destination);
+    preview.start();
+  }
+
+  // ---- saving ------------------------------------------------------------
+  function fileNameFor(i, word) {
+    var safe = word.replace(/[\\/:*?"<>|]/g, "_");
+    return ("000" + (i + 1)).slice(-3) + "_" + safe + ".wav";
+  }
+
+  function saveAndNext() {
+    if (!take || !dir) { return; }
+    var it = ITEMS[index];
+    var text = document.getElementById("txt").value.trim() || it.s;
+    var name = fileNameFor(index, it.w);
+    var blob = wav(trimmed(), take.rate);
+    say("保存中…");
+    dir.getFileHandle(name, { create: true }).then(function (fh) {
+      return fh.createWritable().then(function (w) {
+        return w.write(blob).then(function () { return w.close(); });
+      });
+    }).then(function () {
+      doneSet[it.w] = { file: name, text: text };
+      edits[it.w] = text;
+      saveEdits();
+      return writeManifest();
+    }).then(function () {
+      say("保存しました: " + name);
+      take = null;
+      index = Math.min(TOTAL, index + 1);
+      render();
+    }, function (err) {
+      say("保存できませんでした: " + err.message);
+    });
+  }
+
+  function writeManifest() {
+    var out = { generated: new Date().toISOString(), items: [] };
+    ITEMS.forEach(function (it, i) {
+      var d = doneSet[it.w];
+      if (d) {
+        out.items.push({ index: i + 1, word: it.w, sentence: d.text,
+                         file: d.file, names: it.n });
+      }
+    });
+    return dir.getFileHandle("manifest.json", { create: true })
+      .then(function (fh) {
+        return fh.createWritable().then(function (w) {
+          return w.write(new Blob([JSON.stringify(out, null, 1)],
+                                  { type: "application/json" }))
+            .then(function () { return w.close(); });
+        });
+      });
+  }
+
+  // ---- the folder is the progress ---------------------------------------
+  function scanFolder() {
+    doneSet = {};
+    var byName = {};
+    ITEMS.forEach(function (it, i) { byName[fileNameFor(i, it.w)] = it.w; });
+    var walk = dir.values ? dir.values() : null;
+    if (!walk) { return Promise.resolve(); }
+    var it = walk.next();
+    function step(res) {
+      return res.then(function (r) {
+        if (r.done) { return null; }
+        var e = r.value;
+        if (e.kind === "file" && byName[e.name]) {
+          doneSet[byName[e.name]] = { file: e.name, text: edits[byName[e.name]] || "" };
+        }
+        if (e.kind === "file" && e.name === "manifest.json") {
+          return e.getFile().then(function (f) { return f.text(); })
+            .then(function (t) {
+              try {
+                JSON.parse(t).items.forEach(function (m) {
+                  if (!edits[m.word]) { edits[m.word] = m.sentence; }
+                });
+                saveEdits();
+              } catch (x) { /* a manifest we cannot read is not fatal */ }
+              return step(walk.next());
+            }, function () { return step(walk.next()); });
+        }
+        return step(walk.next());
+      });
+    }
+    return step(it);
+  }
+
+  function firstUnrecorded() {
+    for (var i = 0; i < TOTAL; i++) {
+      if (!doneSet[ITEMS[i].w]) { return i; }
+    }
+    return TOTAL;
+  }
+
+  // ---- rendering ---------------------------------------------------------
+  function say(t) {
+    var el = document.getElementById("status");
+    if (el) { el.textContent = t; }
+  }
+
+  function paintStats() {
+    var done = 0, names = 0;
+    ITEMS.forEach(function (it) {
+      if (doneSet[it.w]) { done++; names += it.n; }
+    });
+    document.getElementById("s-done").textContent = done;
+    document.getElementById("s-total").textContent = TOTAL;
+    document.getElementById("s-names").textContent = names;
+    document.getElementById("s-pos").textContent =
+      Math.min(index + 1, TOTAL) + " / " + TOTAL;
+    document.getElementById("s-track").style.width = (100 * done / TOTAL) + "%";
+  }
+
+  function paintButtons() {
+    var has = !!take;
+    document.getElementById("play").disabled = !has;
+    document.getElementById("save").disabled = !has;
+    document.getElementById("again").disabled = !has;
+  }
+
+  function render() {
+    paintStats();
+    var app = document.getElementById("app");
+    if (index >= TOTAL) {
+      app.innerHTML = '<div class="card finished"><h2>ぜんぶ終わりました。ありがとうございます。</h2>' +
+        '<p>フォルダの中の wav ファイルと manifest.json を、そのまま送ってください。</p></div>';
+      return;
+    }
+    var it = ITEMS[index];
+    var already = doneSet[it.w];
+    app.innerHTML =
+      '<div class="card">' +
+        '<div class="card-top"><span>' + (index + 1) + ' / ' + TOTAL + '</span>' +
+          (already ? '<span style="color:var(--ok)">録音済み — 上書きできます</span>' : '') +
+          '<span class="unlocks">' + it.n + ' 語に使われます</span></div>' +
+        '<div class="word">読む言葉： <b>' + it.w + '</b></div>' +
+        '<div class="line">' +
+          '<textarea id="txt" spellcheck="false">' +
+            (edits[it.w] || it.s) + '</textarea>' +
+          '<p class="hint">不自然なときは直してから録音してください。録音した文がそのまま保存されます。</p>' +
+        '</div>' +
+        '<div class="wave-wrap"><div class="wave" id="wave">' +
+          '<canvas id="cv"></canvas>' +
+          '<div class="handle" id="hA"></div><div class="handle" id="hB"></div>' +
+          '<div class="empty">録音するとここに波形が出ます</div>' +
+        '</div>' +
+        '<div class="dur"><span>緑の線の内側だけが保存されます</span>' +
+          '<span id="d-len">–</span></div></div>' +
+        '<div class="meter"><i id="meter-i"></i></div>' +
+        '<div class="transport">' +
+          '<button class="b-rec" id="rec">● 録音<kbd>R</kbd></button>' +
+          '<button id="play">再生<kbd>SPACE</kbd></button>' +
+          '<button id="again">録り直す<kbd>BKSP</kbd></button>' +
+          '<span class="spacer"></span>' +
+          '<button class="tiny" id="prev">← 前</button>' +
+          '<button class="tiny" id="next">飛ばす →</button>' +
+          '<button class="b-save" id="save">保存して次へ<kbd>ENTER</kbd></button>' +
+        '</div>' +
+        '<div class="keys">R = 録音 / 停止 &nbsp;·&nbsp; SPACE = 再生 &nbsp;·&nbsp; ' +
+          'BACKSPACE = 録り直す &nbsp;·&nbsp; ENTER = 保存して次へ</div>' +
+      '</div>';
+
+    document.getElementById("rec").addEventListener("click", toggleRecord);
+    document.getElementById("play").addEventListener("click", playTake);
+    document.getElementById("again").addEventListener("click", function () {
+      take = null;
+      document.getElementById("wave").classList.remove("has-audio");
+      drawWave(); paintButtons();
+    });
+    document.getElementById("save").addEventListener("click", saveAndNext);
+    document.getElementById("prev").addEventListener("click", function () {
+      if (index > 0) { index--; take = null; render(); }
+    });
+    document.getElementById("next").addEventListener("click", function () {
+      index = Math.min(TOTAL, index + 1); take = null; render();
+    });
+    document.getElementById("txt").addEventListener("input", function () {
+      edits[it.w] = this.value;
+      saveEdits();
+    });
+    dragHandles();
+    paintButtons();
+    drawWave();
+  }
+
+  function dragHandles() {
+    var wrap = document.getElementById("wave");
+    ["hA", "hB"].forEach(function (id) {
+      var el = document.getElementById(id);
+      el.addEventListener("pointerdown", function (ev) {
+        el.setPointerCapture(ev.pointerId);
+        var move = function (e) {
+          var r = wrap.getBoundingClientRect();
+          var p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+          if (id === "hA") { trimA = Math.min(p, trimB - 0.01); }
+          else { trimB = Math.max(p, trimA + 0.01); }
+          drawWave();
+        };
+        var up = function () {
+          el.removeEventListener("pointermove", move);
+          el.removeEventListener("pointerup", up);
+        };
+        el.addEventListener("pointermove", move);
+        el.addEventListener("pointerup", up);
+      });
+    });
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.target && e.target.tagName === "TEXTAREA") { return; }
+    if (!dir || index >= TOTAL) { return; }
+    if (e.key === "r" || e.key === "R") { e.preventDefault(); toggleRecord(); }
+    else if (e.key === " ") { e.preventDefault(); playTake(); }
+    else if (e.key === "Enter") { e.preventDefault(); saveAndNext(); }
+    else if (e.key === "Backspace") {
+      e.preventDefault();
+      take = null;
+      document.getElementById("wave").classList.remove("has-audio");
+      drawWave(); paintButtons();
+    }
+  });
+
+  window.addEventListener("resize", drawWave);
+
+  // ---- start -------------------------------------------------------------
+  function begin(handle) {
+    dir = handle;
+    document.getElementById("setup").hidden = true;
+    document.getElementById("app").hidden = false;
+    document.getElementById("foot").hidden = false;
+    document.getElementById("folder").textContent = "フォルダ： " + handle.name;
+    scanFolder().then(function () {
+      index = firstUnrecorded();
+      render();
+      return openMic();
+    }).then(function () {
+      say("マイクの準備ができました");
+    }, function (err) {
+      say(err && err.name ? "マイク: " + err.name : "");
+      render();
+    });
+  }
+
+  if (!window.showDirectoryPicker) {
+    document.getElementById("unsupported").hidden = false;
+    document.getElementById("pick").disabled = true;
+  }
+
+  document.getElementById("pick").addEventListener("click", function () {
+    window.showDirectoryPicker({ mode: "readwrite" }).then(function (h) {
+      return putHandle(h).then(function () { begin(h); }, function () { begin(h); });
+    }, function () { /* he cancelled the picker */ });
+  });
+
+  document.getElementById("relink").addEventListener("click", function () {
+    window.showDirectoryPicker({ mode: "readwrite" }).then(function (h) {
+      putHandle(h);
+      begin(h);
+    }, function () { /* cancelled */ });
+  });
+
+  document.getElementById("skipto").addEventListener("click", function () {
+    index = firstUnrecorded();
+    take = null;
+    render();
+  });
+
+  // A folder chosen last time can be reopened with one click rather than
+  // hunted for again - but the browser still has to ask, so this only
+  // pre-fills the setup screen.
+  if (window.showDirectoryPicker) {
+    getHandle().then(function (h) {
+      if (!h || !h.queryPermission) { return; }
+      h.queryPermission({ mode: "readwrite" }).then(function (state) {
+        var b = document.getElementById("pick");
+        if (state === "granted") { begin(h); return; }
+        b.textContent = "「" + h.name + "」を続ける / Continue";
+        b.addEventListener("click", function (e) {
+          e.stopImmediatePropagation();
+          h.requestPermission({ mode: "readwrite" }).then(function (s) {
+            if (s === "granted") { begin(h); }
+          });
+        }, true);
+      });
+    }, function () { /* nothing remembered */ });
+  }
+
+  document.getElementById("s-total").textContent = TOTAL;
+}());
+</script>
+</body>
+</html>
