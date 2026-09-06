@@ -173,6 +173,35 @@ button kbd {
   border-top: 1px solid var(--line);
 }
 
+/* ---- the standing guide ---- */
+.guide {
+  margin-top: 22px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px;
+}
+.guide h2 { margin: 0 0 4px; font-size: 17px; font-weight: 700; }
+.guide > p { margin: 0 0 16px; font-size: 13.5px; color: var(--muted); }
+.guide dl {
+  margin: 0; display: grid; grid-template-columns: max-content 1fr;
+  gap: 2px 18px;
+}
+.guide dt {
+  font-size: 12px; font-weight: 700; color: var(--wave);
+  padding-top: 3px; white-space: nowrap;
+}
+.guide dd { margin: 0 0 11px; font-size: 13.5px; line-height: 1.65; }
+.guide dd:last-of-type { margin-bottom: 0; }
+.guide .en {
+  display: block; margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono); font-size: 11px; color: var(--faint);
+  line-height: 1.6;
+}
+@media (max-width: 620px) {
+  .guide dl { grid-template-columns: 1fr; gap: 0; }
+  .guide dt { padding-top: 10px; }
+}
+.danger { border-color: var(--rec); color: var(--rec); }
+
 /* ---- footer ---- */
 .foot {
   margin-top: 22px; background: var(--panel);
@@ -205,12 +234,18 @@ button kbd {
 
 <main>
   <div id="setup" class="setup">
-    <h2>はじめに</h2>
+    <h2>日本語の例文を録音してください</h2>
+    <p style="color:var(--muted);font-size:14px;margin:0 0 16px">
+      Minecraft のアイテム名を日本語で読み上げる、日本語学習用の MOD を作っています。
+      単語だけでなく<strong>その単語を使った短い例文</strong>も聞けるようにしたいのですが、
+      今 287 語ぶんが足りません。その 287 文を読んでいただけると助かります。
+      全部で 629 個のアイテム名に使われます。</p>
     <ol>
-      <li>録音を保存する<strong>フォルダ</strong>を選んでください。音声はあなたのパソコンにだけ保存され、どこにも送信されません。</li>
+      <li>録音を保存する<strong>フォルダ</strong>を選んでください。新しく空のフォルダを作るのがおすすめです。音声はあなたのパソコンにだけ保存され、どこにも送信されません。</li>
       <li>マイクの使用を許可してください。</li>
-      <li>画面の文をそのまま読んで録音します。文が不自然なときは<strong>直接書き直して</strong>から録音してください。</li>
+      <li>画面の文をそのまま読んで録音します。文が不自然なときは<strong>その場で書き直して</strong>から録音してください。直したほうが助かります。</li>
       <li>途中でやめて大丈夫です。次に同じフォルダを選べば、続きから始まります。</li>
+      <li>終わったら、フォルダごと送ってください。</li>
     </ol>
     <button class="b-save" id="pick">フォルダを選ぶ / Choose a folder</button>
     <div class="warn" id="unsupported" hidden>
@@ -222,12 +257,47 @@ button kbd {
 
   <div id="app" hidden></div>
 
+  <div class="guide" id="guide" hidden>
+    <h2>使い方</h2>
+    <p>いつでもここを見られます。急がなくて大丈夫です。</p>
+    <dl>
+      <dt>読む</dt>
+      <dd>大きく表示されている文を、ふつうの速さで読んでください。ゆっくり区切ったり、強調したりしなくて大丈夫です。学習者はこれを「自然な話し方の見本」として聞きます。</dd>
+
+      <dt>文を直す</dt>
+      <dd>文が不自然だったり、言いにくかったりしたら、<strong>その場で書き直してください</strong>。読んだとおりの文が音声といっしょに保存されるので、直しても問題ありません。むしろ助かります。単語（オレンジの文字）はそのまま残してください。</dd>
+
+      <dt>録音する</dt>
+      <dd><strong>R</strong> キーで録音開始、もう一度 <strong>R</strong> で停止します。止めると自動で再生されます。<strong>スペース</strong>でもう一度聞けます。録り直すときは <strong>Backspace</strong>。</dd>
+
+      <dt>音量</dt>
+      <dd>録音中は下のバーが動きます。バーが右端に張りつくと音が割れるので、少しマイクから離れてください。静かな部屋で、マイクとの距離を毎回同じくらいに保つときれいに録れます。</dd>
+
+      <dt>切り取り</dt>
+      <dd>波形の緑の線の<strong>内側だけ</strong>が保存されます。前後の無音はだいたい自動で見つけて線を置きますが、<strong>自動では切りません</strong>。線はドラッグで動かせます。言葉の頭が切れていないか、波形を見て確かめてください。</dd>
+
+      <dt>保存して次へ</dt>
+      <dd><strong>Enter</strong> で保存し、次の文に進みます。ファイルは選んだフォルダに直接書き込まれます。保存ボタンを押し忘れる心配はありますが、押さずに次へ行っても、あとで戻れます。</dd>
+
+      <dt>やめるとき</dt>
+      <dd>そのままページを閉じて大丈夫です。次に開いて<strong>同じフォルダ</strong>を選べば、録音していない最初の文から再開します。進み具合はフォルダの中のファイルそのものです。</dd>
+
+      <dt>送り方</dt>
+      <dd>終わったら、または途中でやめるときは、<strong>フォルダごと圧縮（zip）して、このリンクを送ってくれた人に送ってください</strong>。中の wav ファイルと manifest.json が必要です。</dd>
+
+      <dt>ブラウザ</dt>
+      <dd><strong>Chrome か Edge</strong> で開いてください。ほかのブラウザではフォルダに保存できません。</dd>
+    </dl>
+    <span class="en">Read each line at a normal pace — it is a model of natural speech, not a pronunciation drill. Rewrite any line that reads awkwardly; what you record is what gets stored. R records and stops, Space replays, Backspace redoes, Enter saves and moves on. Only the region between the green handles is kept; silence is detected and suggested but never cut for you. Stop whenever — reopen with the same folder to continue. When you are done, zip the folder and send it to whoever shared this link.</span>
+  </div>
+
   <div class="foot" id="foot" hidden>
     <h3>保存先</h3>
     <div id="folder" class="status"></div>
     <div class="row">
       <button class="tiny" id="relink">別のフォルダにする</button>
       <button class="tiny" id="skipto">未録音の先頭へ</button>
+      <button class="tiny danger" id="wipe">録音を全部消してやり直す</button>
       <span class="status" id="status"></span>
     </div>
   </div>
@@ -2425,6 +2495,7 @@ button kbd {
     document.getElementById("setup").hidden = true;
     document.getElementById("app").hidden = false;
     document.getElementById("foot").hidden = false;
+    document.getElementById("guide").hidden = false;
     document.getElementById("folder").textContent = "フォルダ： " + handle.name;
     scanFolder().then(function () {
       index = firstUnrecorded();
@@ -2454,6 +2525,48 @@ button kbd {
       putHandle(h);
       begin(h);
     }, function () { /* cancelled */ });
+  });
+
+  // Deleting has to happen from HERE, because the recordings live in the
+  // reader's own folder and nothing else can reach them. Only files this page
+  // wrote are touched - the names are generated from the word list, so
+  // anything else in the folder is left completely alone.
+  var wipeBtn = document.getElementById("wipe");
+  var armed = false, armTimer = null;
+
+  function disarm() {
+    armed = false;
+    window.clearTimeout(armTimer);
+    wipeBtn.textContent = "録音を全部消してやり直す";
+  }
+
+  wipeBtn.addEventListener("click", function () {
+    if (!dir) { return; }
+    if (!armed) {
+      armed = true;
+      wipeBtn.textContent = "本当に消す？ もう一度押す";
+      armTimer = window.setTimeout(disarm, 6000);
+      return;
+    }
+    disarm();
+    var names = ITEMS.map(function (it, i) { return fileNameFor(i, it.w); });
+    names.push("manifest.json");
+    var gone = 0;
+    var step = function (i) {
+      if (i >= names.length) {
+        doneSet = {};
+        edits = {};
+        saveEdits();
+        take = null;
+        index = 0;
+        render();
+        say(gone + " 個のファイルを消しました");
+        return;
+      }
+      dir.removeEntry(names[i]).then(function () { gone++; step(i + 1); },
+                                     function () { step(i + 1); });
+    };
+    step(0);
   });
 
   document.getElementById("skipto").addEventListener("click", function () {
